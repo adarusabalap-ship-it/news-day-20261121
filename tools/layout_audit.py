@@ -26,8 +26,14 @@ _orig_text = ImageDraw.ImageDraw.text
 
 def recording_text(self, xy, text, *a, **kw):
     box = _orig_text(self, xy, text, *a, **kw)
-    if str(text).strip():
-        RECORDS.append((str(text), box))
+    if str(text).strip() and not poster.SUPPRESS:
+        # PIL's text() returns None, so measure the box ourselves: trusting its
+        # return value records nothing and makes every overlap check vacuous.
+        try:
+            bbox = self.textbbox(xy, str(text), font=kw.get("font"), anchor=kw.get("anchor"))
+        except Exception:
+            bbox = None
+        RECORDS.append((str(text), bbox))
     return box
 
 
@@ -64,27 +70,24 @@ def audit_page():
 
     M, RIGHT = poster.M, poster.RIGHT
     outside = []
-    for txt, box in RECORDS:
-        if box is None:
-            continue
+    measured = [r for r in RECORDS if r[1] is not None] + \
+               [r for r in poster.RECORD_CAPS if r[1] is not None]
+    for txt, box in measured:
         x0, y0, x1, y1 = box
         if x0 < M - 1 or x1 > RIGHT + 2 or y1 > 1024 - M + 3 or y0 < 4:
             outside.append((txt, box))
 
     overlaps = []
-    for i in range(len(RECORDS)):
-        ta, ba = RECORDS[i]
-        if ba is None:
-            continue
-        for j in range(i + 1, len(RECORDS)):
-            tb, bb = RECORDS[j]
-            if bb is None:
-                continue
+    for i in range(len(measured)):
+        ta, ba = measured[i]
+        for j in range(i + 1, len(measured)):
+            tb, bb = measured[j]
             ox = min(ba[2], bb[2]) - max(ba[0], bb[0])
             oy = min(ba[3], bb[3]) - max(ba[1], bb[1])
             if ox > 2 and oy > 2:
                 overlaps.append((ta, tb, ox, oy))
-    return outside, overlaps
+    unmeasured = len(RECORDS) - len([r for r in RECORDS if r[1] is not None])
+    return outside, overlaps, unmeasured
 
 
 def audit_bands():
@@ -108,7 +111,7 @@ def audit_bands():
 
 def main():
     art = audit_art()
-    outside, overlaps = audit_page()
+    outside, overlaps, unmeasured = audit_page()
     bands = audit_bands()
 
     for n, x, y in art:
@@ -119,8 +122,10 @@ def main():
         print("OVERLAP    %r / %r  by %dx%d px" % (ta[:32], tb[:32], ox, oy))
     for b in bands:
         print("BAND       %r" % (b,))
+    if unmeasured:
+        print("UNMEASURED %d text calls had no box" % unmeasured)
 
-    ok = not art and not outside and not overlaps and not bands
+    ok = not art and not outside and not overlaps and not bands and not unmeasured
     print("audit: %s (%d spills, %d outside, %d overlaps, %d band)"
           % ("PASS" if ok else "FAIL", len(art), len(outside), len(overlaps), len(bands)))
     return 0 if ok else 1

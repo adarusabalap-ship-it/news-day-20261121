@@ -124,6 +124,7 @@ STORIES = [
 
 FD = "C:/Windows/Fonts/"
 _cache = {}
+RECORD_CAPS = []
 
 
 def font(name, size):
@@ -170,11 +171,22 @@ def fit_caps(d, s, name, size, maxw, minsize=9, track=0.0):
     return font(name, minsize), minsize
 
 
+SUPPRESS = False
+
+
 def caps(d, xy, s, f, fill, track=1.1):
+    """Letter-spaced caps: one glyph per call, recorded once as a whole string."""
+    global SUPPRESS
     x, y = xy
-    for ch in s:
-        d.text((x, y), ch, font=f, fill=fill)
-        x += tw(d, ch, f) + track
+    start = x
+    SUPPRESS = True
+    try:
+        for ch in s:
+            d.text((x, y), ch, font=f, fill=fill)
+            x += tw(d, ch, f) + track
+    finally:
+        SUPPRESS = False
+    RECORD_CAPS.append((s, (int(start), y, int(x - track), y + f.size + 2)))
     return x
 
 
@@ -429,10 +441,17 @@ ART = {1: art_strike, 2: art_trade, 6: art_cop, 8: art_quake,
 
 def draw_art(img, n, box):
     """Draw an illustration clipped to its box, however far its strokes reach."""
+    global SUPPRESS
     x0, y0, x1, y1 = box
     w, h = int(x1 - x0 + 1), int(y1 - y0 + 1)
     tile = Image.new("RGB", (w, h), PAPER)
-    ART[n](ImageDraw.Draw(tile), (0, 0, w - 1, h - 1))
+    # The drawing renders into its own tile at local coordinates; its labels are
+    # part of the picture, not layout text, so keep them out of the audit record.
+    SUPPRESS = True
+    try:
+        ART[n](ImageDraw.Draw(tile), (0, 0, w - 1, h - 1))
+    finally:
+        SUPPRESS = False
     img.paste(tile, (int(x0), int(y0)))
 
 
@@ -449,7 +468,8 @@ CAPTION = {
 }
 
 PANELS = [1, 2, 6, 8, 10, 12]
-FOOT = [3, 4, 5, 9, 11, 13, 22, 23]
+# every remaining story of the edition, so the page covers the whole day
+FOOT = [3, 4, 5, 7, 9, 11, 13] + list(range(14, 36))
 
 
 def main(out_path):
@@ -484,18 +504,37 @@ def main(out_path):
     f_kick = font("arialbd.ttf", 10)
     f_src = font("arialbd.ttf", 8.5)
 
-    heights = []
-    for n in PANELS:
-        st = by_n(n)
-        h = art_h + band_h + 8 + 15
-        h += int(19 * 1.12) * len(wrap(d, st[2], f_head, pw))
-        if st[3]:
-            h += 3 + 13 * len(wrap(d, st[3], f_deck, pw)[:2])
-        h += 3 + 11
-        heights.append(h)
-    row_h = [max(heights[0:3]), max(heights[3:6])]
+    def measure(a_h):
+        hs = []
+        for n in PANELS:
+            st = by_n(n)
+            h = a_h + band_h + 8 + 15
+            h += int(19 * 1.12) * len(wrap(d, st[2], f_head, pw))
+            if st[3]:
+                h += 3 + 13 * len(wrap(d, st[3], f_deck, pw)[:2])
+            h += 3 + 11
+            hs.append(h)
+        return [max(hs[0:3]), max(hs[3:6])]
 
     top = 262
+    # the briefs rail sizes itself first; the pictures then take what is left
+    f_b = font("arialbd.ttf", 10.5)
+    f_r = font("arial.ttf", 10.5)
+    cols = 3
+    colw = (EDGE - 2 * 16) // cols
+    rows = (len(FOOT) + cols - 1) // cols
+    lead = 13.0
+    close_rule = H - M - 26
+    foot_h = (rows - 1) * lead + 12
+    y_foot = close_rule - 12 - foot_h
+    rule = y_foot - 14
+    # shrink the pictures until both rows clear the footer band
+    while art_h > 80:
+        row_h = measure(art_h)
+        if top + row_h[0] + gap + row_h[1] <= rule - 10:
+            break
+        art_h -= 2
+    row_h = measure(art_h)
     for i, n in enumerate(PANELS):
         st = by_n(n)
         col = colour(st)
@@ -526,30 +565,30 @@ def main(out_path):
         caps(d, (cx, ty + 3), st[4].upper(), f_src, FAINT)
 
     # the rest of the day, anchored to the foot so the page closes cleanly
-    y_foot = H - M - 146
     d.line([M, y_foot - 14, RIGHT, y_foot - 14], fill=RULE, width=2)
     caps(d, (M, y_foot), "ALSO ON THE DAY", font("arialbd.ttf", 12), INK)
     note = "AP · REUTERS · AFP · BBC · USGS · ESA · EU COMMISSION"
     caps(d, (RIGHT - caps_width(d, note, f_src), y_foot + 2), note, f_src, FAINT)
 
-    f_b = font("arialbd.ttf", 12.5)
-    f_r = font("arial.ttf", 12.5)
-    colw = (EDGE - 20) // 2
-    rows = (len(FOOT) + 1) // 2
     for i, n in enumerate(FOOT):
         st = by_n(n)
-        cx = M + (i // rows) * (colw + 20)
-        yy = y_foot + 24 + (i % rows) * 22.0
-        d.rectangle([cx, yy + 3, cx + 3, yy + 10], fill=colour(st))
+        cx = M + (i // rows) * (colw + 16)
+        yy = y_foot + 26 + (i % rows) * lead
+        d.rectangle([cx, yy + 3, cx + 3, yy + 9], fill=colour(st))
         head = st[2]
-        x = cx + 11
+        x = cx + 10
         if ": " in head:
             actor, rest = head.split(": ", 1)
             d.text((x, yy), actor + ":", font=f_b, fill=INK)
             x += tw(d, actor + ":", f_b) + tw(d, " ", f_r)
-            if x + tw(d, rest, f_r) <= cx + colw:
+            # clip the remainder to the column so it never runs into the next one
+            while rest and x + tw(d, rest, f_r) > cx + colw - 2:
+                rest = rest[:-1].rstrip()
+            if rest:
                 d.text((x, yy), rest, font=f_r, fill=INK)
         else:
+            while head and x + tw(d, head, f_r) > cx + colw - 2:
+                head = head[:-1].rstrip()
             d.text((x, yy), head, font=f_r, fill=INK)
 
     # closing line: what the page promises about itself
