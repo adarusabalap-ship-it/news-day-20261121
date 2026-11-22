@@ -476,11 +476,17 @@ def main(out_path):
     img = Image.new("RGB", (W, H), PAPER)
     d = ImageDraw.Draw(img)
 
-    # top rail
-    caps(d, (M, 20), "THE WORLD ON ONE DAY", font("arialbd.ttf", 12), RED)
-    tail = "SIX STORIES  ·  %d MORE INSIDE  ·  ALL FROM ONE SATURDAY" % len(FOOT)
-    f_tail = font("arialbd.ttf", 11)
-    caps(d, (RIGHT - caps_width(d, tail, f_tail), 21), tail, f_tail, SOFT)
+    # region tally in the top rail: where the day's news actually happened
+    d.rectangle([M, 20, M + 3, 32], fill=RED)
+    caps(d, (M + 9, 20), "THE WORLD ON ONE DAY", font("arialbd.ttf", 12), RED)
+    tally = "  ".join("%s %d" % (lbl, sum(1 for s in STORIES if s[1] == reg))
+                      for reg, (_, lbl) in
+                      (("europe", REGION["europe"]), ("americas", REGION["americas"]),
+                       ("asia", REGION["asia"]), ("middle-east", REGION["middle-east"]),
+                       ("africa", REGION["africa"]), ("world", REGION["world"]),
+                       ("oceania", REGION["oceania"])))
+    f_tail = font("arialbd.ttf", 10.5)
+    caps(d, (RIGHT - caps_width(d, tally, f_tail), 21), tally, f_tail, SOFT)
     d.line([M, 42, RIGHT, 42], fill=RULE, width=2)
 
     # masthead: the date is the one thing that must never be missed
@@ -489,9 +495,38 @@ def main(out_path):
     date_line = "21 NOVEMBER 2026"
     f_date, _ = fit(d, date_line, "georgiab.ttf", 108, EDGE, 1)
     d.text((M, 84), date_line, font=f_date, fill=INK)
-    sub = ("Iran strikes a site in Bahrain  ·  the EU and Indonesia sign a trade pact  "
-           "·  COP31 runs a day over")
-    d.text((M, 210), sub, font=font("georgiai.ttf", 20), fill=SOFT)
+    sub = ("")
+
+    # the day in six hard numbers, one per region: the space the teaser used
+    # to take, spent on the figures a reader remembers instead of repeated
+    # headlines. Every numeral is the edition's own.
+    NUMBERS = [
+        ("americas", "M6.7", "Peru quake, 8 hurt"),
+        ("oceania", "486-4", "India at stumps"),
+        ("asia", "98.5%", "EU tariff lines"),
+        ("world", "$25,500", "Bitcoin's low"),
+        ("europe", "82,500", "French marches"),
+        ("africa", "US$3bn", "Uganda rail off"),
+    ]
+    nb_top, nb_h = 176, 66
+    ncell = EDGE // len(NUMBERS)
+    f_cap = font("arial.ttf", 10)
+    for i, (reg, big, cap) in enumerate(NUMBERS):
+        cx0 = M + i * ncell
+        col = REGION[reg][0]
+        d.rectangle([cx0, nb_top, cx0 + ncell - 3, nb_top + 3], fill=col)
+        # the numeral carries the cell, so it is sized to fill it; anything
+        # under ~10pt turns to grey noise at 300px and reads as garbled text
+        f_num = font("georgiab.ttf", 34)
+        while tw(d, big, f_num) > ncell - 12 and f_num.size > 16:
+            f_num = font("georgiab.ttf", f_num.size - 1)
+        d.text((cx0, nb_top + 4), big, font=f_num, fill=INK)
+        caps(d, (cx0, nb_top + 44), REGION[reg][1], font("arialbd.ttf", 8), col)
+        while tw(d, cap, f_cap) > ncell - 12:
+            f_cap = font("arial.ttf", f_cap.size - 1)
+        d.text((cx0, nb_top + 53), cap, font=f_cap, fill=SOFT)
+        if i:
+            d.line([cx0 - 2, nb_top + 6, cx0 - 2, nb_top + nb_h - 4], fill=(214, 206, 190), width=1)
     d.line([M, 246, RIGHT, 246], fill=RULE, width=2)
 
     # measure, then draw: the two rows must share a height or the grid tears

@@ -55,8 +55,32 @@ def main():
     if missing:
         print("NOT ON THE PAGE: %s" % missing)
 
-    ok = not bad and not missing
-    print("content: %s (%d mismatches, %d stories missing)" % ("PASS" if ok else "FAIL", len(bad), len(missing)))
+    # every hard number in the band must appear in the edition's own words
+    corpus = norm(json.dumps(doc, ensure_ascii=False))
+    band = [
+        ("M6.7", "magnitude 6.7"),
+        ("486-4", "486-4"),
+        ("98.5%", "98.5%"),
+        ("$25,500", "$25,500"),
+        ("82,500", "82,500"),
+        ("US$3bn", "$3bn"),
+    ]
+    num_bad = []
+    for shown, needle in band:
+        if norm(needle) not in corpus:
+            num_bad.append((shown, needle))
+    for shown, needle in num_bad:
+        print("UNSOURCED NUMBER %r (looked for %r)" % (shown, needle))
+    print("numbers band: %d checked, %d unsourced" % (len(band), len(num_bad)))
+
+    # the region tally must equal the edition's own counts
+    tally_ok = all(sum(1 for s in doc["stories"] if s["region"] == r["id"]) == r["count"]
+                   for r in doc["regions"])
+    print("region tally matches edition counts:", tally_ok)
+
+    ok = not bad and not missing and not num_bad and tally_ok
+    print("content: %s (%d mismatches, %d stories missing, %d unsourced numbers)"
+          % ("PASS" if ok else "FAIL", len(bad), len(missing), len(num_bad)))
     return 0 if ok else 1
 
 
