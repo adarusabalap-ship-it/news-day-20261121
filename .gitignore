@@ -3,3 +3,4 @@ out/
 __pycache__/
 *.pyc
 transcripts.tar.gz
+transcripts*.tar.gz
