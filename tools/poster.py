@@ -467,6 +467,25 @@ CAPTION = {
     12: ("INDIA", "486 FOR 4"),
 }
 
+# The day on a clock: one dot per story, at the hour the edition first had it
+# on 21 November 2026 (links[].publishedAt, UTC, inside the day itself). Only
+# stories whose first report falls inside 00:00-23:59Z are drawn, so the clock
+# never claims a time the edition does not hold. content_audit checks each.
+CLOCK = [
+    (13, "00:08", "UN robot talks", "europe"),
+    (8, "05:30", "Peru quake M6.7", "americas"),
+    (18, "08:03", "NATO on Poland", "europe"),
+    (23, "10:18", "Manipur deaths", "asia"),
+    (2, "12:04", "EU\u2013Indonesia pact", "asia"),
+    (1, "13:44", "Iran hits Bahrain", "middle-east"),
+    (6, "17:12", "COP31 overtime", "world"),
+    (30, "18:05", "FBI hack", "americas"),
+]
+
+# the edition's own tiers, so the page says which stories it judged the day's
+# leads rather than presenting all six panels as equally important
+LEADS = [1, 2]
+
 PANELS = [1, 2, 6, 8, 10, 12]
 # every remaining story of the edition, so the page covers the whole day
 FOOT = [3, 4, 5, 7, 9, 11, 13] + list(range(14, 36))
@@ -529,6 +548,44 @@ def main(out_path):
             d.line([cx0 - 2, nb_top + 6, cx0 - 2, nb_top + nb_h - 4], fill=(214, 206, 190), width=1)
     d.line([M, 246, RIGHT, 246], fill=RULE, width=2)
 
+    # the day on a clock: the edition's own first-report times, so a reader can
+    # see the day move from midnight in Europe to evening in Washington. Each
+    # dot is one story; the four that name a headline are the ones a reader can
+    # otherwise only see unplaced at the foot of the page.
+    cl_top = 252
+    cl_h = 62
+    f_hour = font("arialbd.ttf", 10)
+    f_ev = font("arial.ttf", 9.5)
+    f_st = font("arialbd.ttf", 9.5)
+    axis = cl_top + 30
+    d.line([M + 30, axis, RIGHT - 30, axis], fill=(196, 188, 172), width=2)
+    for h in (0, 6, 12, 18, 24):
+        hx = M + 30 + (RIGHT - 30 - M - 30) * h / 24.0
+        d.line([hx, axis - 3, hx, axis + 3], fill=(120, 112, 100), width=1)
+        lbl = "%02d UTC" % h
+        d.text((hx - tw(d, lbl, f_hour) / 2, cl_top + 46), lbl, font=f_hour, fill=FAINT)
+    caps(d, (M, cl_top), "THE DAY IN UTC \u00b7 WHEN EACH STORY FIRST BROKE", f_hour, SOFT)
+    # alternate the labels above and below the axis by position in time, so two
+    # neighbouring stories never land on the same row
+    for i, (n, hhmm, label, reg) in enumerate(CLOCK):
+        hh, mm = hhmm.split(":")
+        t = (int(hh) * 60 + int(mm)) / 1440.0
+        px = M + 30 + (RIGHT - 30 - M - 30) * t
+        col = REGION[reg][0]
+        d.ellipse([px - 3, axis - 3, px + 3, axis + 3], fill=col, outline=PAPER)
+        stamp = "%s " % hhmm
+        wlab = tw(d, stamp, f_st) + tw(d, label, f_ev)
+        x = max(M, min(px - wlab / 2, RIGHT - wlab))
+        if i % 2 == 0:
+            ty = cl_top + 12
+            d.line([px, axis - 4, px, ty + 12], fill=col, width=1)
+        else:
+            ty = cl_top + 33
+            d.line([px, axis + 4, px, ty], fill=col, width=1)
+        d.text((x, ty), stamp, font=f_st, fill=col)
+        d.text((x + tw(d, stamp, f_st), ty), label, font=f_ev, fill=INK)
+    d.line([M, cl_top + cl_h + 4, RIGHT, cl_top + cl_h + 4], fill=RULE, width=2)
+
     # measure, then draw: the two rows must share a height or the grid tears
     gap = 16
     pw = (EDGE - 2 * gap) // 3
@@ -551,7 +608,7 @@ def main(out_path):
             hs.append(h)
         return [max(hs[0:3]), max(hs[3:6])]
 
-    top = 262
+    top = cl_top + cl_h + 12
     # the briefs rail sizes itself first; the pictures then take what is left
     f_b = font("arialbd.ttf", 10.5)
     f_r = font("arial.ttf", 10.5)
@@ -590,7 +647,17 @@ def main(out_path):
         d.text((cx + 11, ty + s1 + 6), small, font=f2, fill=(255, 246, 238))
 
         ty = cy + art_h + band_h + 10
-        caps(d, (cx, ty), region_label(st), f_kick, col)
+        if n in LEADS:
+            # a solid chip, not an outline: at this size a hairline box breaks
+            # up in any downscale, and the chip has to survive 300px
+            f_l = font("arialbd.ttf", 9)
+            label = "LEAD STORY"
+            lw = caps_width(d, label, f_l, 0.6)
+            d.rectangle([cx, ty - 1, cx + lw + 10, ty + f_l.size + 3], fill=col)
+            caps(d, (cx + 5, ty + 1), label, f_l, WHITE, track=0.6)
+            caps(d, (cx + lw + 16, ty + 1), region_label(st), f_kick, col)
+        else:
+            caps(d, (cx, ty), region_label(st), f_kick, col)
         ty += 15
         for ln in wrap(d, st[2], f_head, pw):
             d.text((cx, ty), ln, font=f_head, fill=INK)

@@ -78,9 +78,39 @@ def main():
                    for r in doc["regions"])
     print("region tally matches edition counts:", tally_ok)
 
-    ok = not bad and not missing and not num_bad and tally_ok
-    print("content: %s (%d mismatches, %d stories missing, %d unsourced numbers)"
-          % ("PASS" if ok else "FAIL", len(bad), len(missing), len(num_bad)))
+    # the clock must place each story at its own first-report time, and each
+    # label's words must come from that story's headline
+    clock_bad = []
+    for n, hhmm, label, reg in poster.CLOCK:
+        st = stories[n]
+        times = [l.get("publishedAt") for l in st.get("links", []) if l.get("publishedAt")]
+        if not times:
+            clock_bad.append((n, "no publishedAt in the edition"))
+            continue
+        want = min(times)[11:16]
+        if want != hhmm:
+            clock_bad.append((n, "time %s, edition says %s" % (hhmm, want)))
+        if st.get("region") != reg:
+            clock_bad.append((n, "region %s, edition says %s" % (reg, st.get("region"))))
+        words = [w for w in norm(label).split() if len(w) > 3]
+        head = norm(st["headline"])
+        if words and not any(w in head for w in words):
+            clock_bad.append((n, "label %r names nothing in the headline %r" % (label, st["headline"])))
+    for n, why in clock_bad:
+        print("CLOCK #%d %s" % (n, why))
+    print("clock: %d placed, %d wrong" % (len(poster.CLOCK), len(clock_bad)))
+
+    # the page may only call a story a lead if the edition tiers it as one
+    tier_bad = [n for n in poster.LEADS if stories[n].get("tier") != "lead"]
+    for n in tier_bad:
+        print("LEAD #%d is tier %r in the edition" % (n, stories[n].get("tier")))
+    print("leads: %d marked, %d not leads in the edition" % (len(poster.LEADS), len(tier_bad)))
+
+    ok = not bad and not missing and not num_bad and tally_ok and not clock_bad and not tier_bad
+    print("content: %s (%d mismatches, %d stories missing, %d unsourced numbers, "
+          "%d clock errors, %d false leads)"
+          % ("PASS" if ok else "FAIL", len(bad), len(missing), len(num_bad),
+             len(clock_bad), len(tier_bad)))
     return 0 if ok else 1
 
 
