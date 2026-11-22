@@ -93,19 +93,19 @@ def audit_page():
 def audit_bands():
     """Caption text must sit inside its coloured band, with room to spare."""
     d = ImageDraw.Draw(Image.new("RGB", (10, 10)))
-    pw = (poster.EDGE - 32) // 3
+    pw = (poster.EDGE - 3 * 14) // 4
     bad = []
     for n in poster.PANELS:
         big, small = poster.CAPTION[n]
-        f1, s1 = poster.fit_caps(d, big, "arialbd.ttf", 21, pw - 22, 11)
-        f2, s2 = poster.fit_caps(d, small, "arialbd.ttf", 21, pw - 22, 11)
-        used = 5 + s1 + 6 + s2
+        f1, s1 = poster.fit_caps(d, big, "arialbd.ttf", 21, pw - 16, 9)
+        f2, s2 = poster.fit_caps(d, small, "arialbd.ttf", 21, pw - 16, 9)
+        used = 5 + s1 + 5 + s2
         if used > poster.BAND_H - 2:
             bad.append((n, "overflow", used, poster.BAND_H))
         for label, f in ((big, f1), (small, f2)):
             wide = poster.tw(d, label, f)
-            if wide > pw - 20:
-                bad.append((n, label, wide, pw - 20))
+            if wide > pw - 14:
+                bad.append((n, label, wide, pw - 14))
     return bad
 
 

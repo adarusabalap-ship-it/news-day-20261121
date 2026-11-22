@@ -78,39 +78,46 @@ def main():
                    for r in doc["regions"])
     print("region tally matches edition counts:", tally_ok)
 
-    # the clock must place each story at its own first-report time, and each
-    # label's words must come from that story's headline
+    # the clock must place each story at its own first-report time. Every entry
+    # is re-derived from that story's links[].publishedAt, so a single invented
+    # minute fails the build.
     clock_bad = []
-    for n, hhmm, label, reg in poster.CLOCK:
+    for n, hhmm in poster.CLOCK.items():
         st = stories[n]
         times = [l.get("publishedAt") for l in st.get("links", []) if l.get("publishedAt")]
         if not times:
-            clock_bad.append((n, "no publishedAt in the edition"))
+            clock_bad.append((n, "no publishedAt in the edition, so no hour may be shown"))
             continue
         want = min(times)[11:16]
         if want != hhmm:
-            clock_bad.append((n, "time %s, edition says %s" % (hhmm, want)))
-        if st.get("region") != reg:
-            clock_bad.append((n, "region %s, edition says %s" % (reg, st.get("region"))))
-        words = [w for w in norm(label).split() if len(w) > 3]
-        head = norm(st["headline"])
-        if words and not any(w in head for w in words):
-            clock_bad.append((n, "label %r names nothing in the headline %r" % (label, st["headline"])))
+            clock_bad.append((n, "poster time %s, edition says %s" % (hhmm, want)))
+        if min(times)[:10] != "2026-11-21":
+            clock_bad.append((n, "first report %s is not on 21 November in UTC"
+                              % min(times)[:10]))
+        if n not in poster.PANELS:
+            clock_bad.append((n, "carries a clock hour but is not one of the panels"))
     for n, why in clock_bad:
         print("CLOCK #%d %s" % (n, why))
-    print("clock: %d placed, %d wrong" % (len(poster.CLOCK), len(clock_bad)))
+    print("clock: %d stamped, %d wrong" % (len(poster.CLOCK), len(clock_bad)))
 
-    # the page may only call a story a lead if the edition tiers it as one
+    # the page may only call a story a lead if the edition tiers it as one, and
+    # it must not leave a lead story unmarked either
     tier_bad = [n for n in poster.LEADS if stories[n].get("tier") != "lead"]
     for n in tier_bad:
         print("LEAD #%d is tier %r in the edition" % (n, stories[n].get("tier")))
-    print("leads: %d marked, %d not leads in the edition" % (len(poster.LEADS), len(tier_bad)))
+    all_leads = sorted(n for n, s in stories.items() if s.get("tier") == "lead")
+    skipped = [n for n in all_leads if n not in poster.LEADS]
+    for n in skipped:
+        print("LEAD #%d is a lead in the edition but unmarked on the page" % n)
+    print("leads: %d marked of %d in the edition, %d not leads, %d left unmarked"
+          % (len(poster.LEADS), len(all_leads), len(tier_bad), len(skipped)))
 
-    ok = not bad and not missing and not num_bad and tally_ok and not clock_bad and not tier_bad
+    ok = (not bad and not missing and not num_bad and tally_ok
+          and not clock_bad and not tier_bad and not skipped)
     print("content: %s (%d mismatches, %d stories missing, %d unsourced numbers, "
-          "%d clock errors, %d false leads)"
+          "%d clock errors, %d false leads, %d unmarked leads)"
           % ("PASS" if ok else "FAIL", len(bad), len(missing), len(num_bad),
-             len(clock_bad), len(tier_bad)))
+             len(clock_bad), len(tier_bad), len(skipped)))
     return 0 if ok else 1
 
 

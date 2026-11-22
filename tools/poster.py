@@ -194,6 +194,20 @@ def caps_width(d, s, f, track=1.1):
     return sum(tw(d, ch, f) + track for ch in s) - track
 
 
+def clip_to(d, s, f, maxw):
+    """Shorten to fit, cutting at a word boundary and marking the cut."""
+    if tw(d, s, f) <= maxw:
+        return s
+    ell = "\u2026"
+    words = s.split()
+    while words:
+        trial = " ".join(words)
+        if tw(d, trial + ell, f) <= maxw:
+            return trial + ell
+        words.pop()
+    return ""
+
+
 def para(d, xy, s, f, fill, maxw, leading, maxlines=99):
     x, y = xy
     for ln in wrap(d, s, f, maxw)[:maxlines]:
@@ -310,11 +324,18 @@ def art_trade(d, box):
     d.rectangle([ix, ey, ix + fw, ey + fh // 2], fill=(208, 36, 46))
     d.rectangle([ix, ey + fh // 2, ix + fw, ey + fh], fill=(250, 248, 242),
                 outline=(150, 150, 145))
-    bx0, bx1 = x0 + int(w * 0.07), x1 - int(w * 0.07)
-    by = y0 + int(h * 0.62)
-    d.rectangle([bx0, by, bx1, by + int(h * 0.13)], fill=(28, 46, 96),
-                outline=(120, 140, 200))
-    d.rectangle([bx0 + 2, by + 2, bx1 - 2, by + int(h * 0.13) - 2], fill=(244, 200, 64))
+    # the deal's own figure: duties go to zero on most lines. Two bars carry
+    # the edition's numbers instead of an unlabelled rule that says nothing.
+    bx0 = x0 + int(w * 0.07)
+    bw_max = int(w * 0.86)
+    by = y0 + int(h * 0.60)
+    f_lab = font("arialbd.ttf", max(7, int(h * 0.062)))
+    for k, (pct, name) in enumerate(((98.5, "EU"), (90.4, "IDN"))):
+        yy = by + k * int(h * 0.19)
+        d.rectangle([bx0, yy, bx0 + int(bw_max * pct / 100.0), yy + int(h * 0.105)],
+                    fill=(244, 200, 64) if k == 0 else (232, 120, 96))
+        d.text((bx0, yy - int(h * 0.075)), "%s %.1f%%" % (name, pct), font=f_lab,
+               fill=(226, 232, 240))
 
 
 def art_cop(d, box):
@@ -435,8 +456,68 @@ def art_cricket(d, box):
                     fill=(232, 240, 218))
 
 
-ART = {1: art_strike, 2: art_trade, 6: art_cop, 8: art_quake,
-       7: art_mercury, 10: art_port, 12: art_cricket}
+def art_capture(d, box):
+    """A cartel leader taken in Sinaloa; the clashes that came with it."""
+    x0, y0, x1, y1 = box
+    w, h = x1 - x0, y1 - y0
+    frame(d, box, (206, 182, 140))
+    # desert floor and a low sun
+    d.rectangle([x0 + 1, y0 + int(h * 0.58), x1 - 1, y1 - 1], fill=(186, 158, 116))
+    sr = h * 0.14
+    sx, sy = x0 + w * 0.80, y0 + h * 0.20
+    d.ellipse([sx - sr, sy - sr, sx + sr, sy + sr], fill=(240, 208, 128))
+    # sierra range on the horizon
+    d.polygon([(x0 + 1, y0 + int(h * 0.58)), (x0 + int(w * 0.22), y0 + int(h * 0.34)),
+               (x0 + int(w * 0.40), y0 + int(h * 0.58))], fill=(150, 120, 88))
+    d.polygon([(x0 + int(w * 0.30), y0 + int(h * 0.58)), (x0 + int(w * 0.52), y0 + int(h * 0.40)),
+               (x0 + int(w * 0.74), y0 + int(h * 0.58))], fill=(132, 104, 76))
+    # a barred window with a figure behind it: "taken" reads at thumbnail size
+    # from bars alone, where a handcuff silhouette was read as a magnifying
+    # glass. The bars are the focal shape and nothing competes with them.
+    wx0, wy0 = x0 + int(w * 0.16), y0 + int(h * 0.30)
+    wx1, wy1 = x0 + int(w * 0.62), y0 + int(h * 0.78)
+    d.rectangle([wx0, wy0, wx1, wy1], fill=(40, 36, 32))
+    # the figure behind the bars
+    hcx = (wx0 + wx1) // 2
+    hr = int((wy1 - wy0) * 0.17)
+    d.ellipse([hcx - hr, wy0 + int((wy1 - wy0) * 0.16) - hr,
+               hcx + hr, wy0 + int((wy1 - wy0) * 0.16) + hr], fill=(146, 140, 132))
+    d.polygon([(hcx - hr * 2, wy1 - 2), (hcx - hr * 1.2, wy0 + int((wy1 - wy0) * 0.46)),
+               (hcx + hr * 1.2, wy0 + int((wy1 - wy0) * 0.46)), (hcx + hr * 2, wy1 - 2)],
+              fill=(146, 140, 132))
+    # the bars, evenly spaced across the opening
+    nb = 4
+    bw = max(3, int(w * 0.022))
+    for k in range(nb):
+        bx = wx0 + int((wx1 - wx0) * (k + 0.5) / nb) - bw // 2
+        d.rectangle([bx, wy0 - int(h * 0.02), bx + bw, wy1 + int(h * 0.02)],
+                    fill=(206, 198, 184))
+    d.rectangle([wx0, wy0, wx1, wy1], outline=(206, 198, 184), width=max(2, int(h * 0.022)))
+
+
+def art_village(d, box):
+    """Bandits killed six in a village in Niger State, Nigeria."""
+    x0, y0, x1, y1 = box
+    w, h = x1 - x0, y1 - y0
+    frame(d, box, (32, 40, 58))
+    d.rectangle([x0 + 1, y0 + int(h * 0.72), x1 - 1, y1 - 1], fill=(150, 122, 82))
+    # huts with thatch roofs, one with a lit doorway. The harm is carried by the
+    # headline and the number, not by a symbol: a red cross was read as a
+    # clinic, which would have misstated the story rather than summarised it.
+    for fx, fw_, lit in ((0.12, 0.20, False), (0.44, 0.24, True), (0.80, 0.18, False)):
+        bx = x0 + w * fx
+        bw, bh = w * fw_, h * 0.34
+        by = y0 + h * 0.72
+        d.rectangle([bx, by - bh, bx + bw, by], fill=(122, 92, 62))
+        d.polygon([(bx - w * 0.03, by - bh), (bx + bw / 2, by - bh - h * 0.20),
+                   (bx + bw + w * 0.03, by - bh)], fill=(168, 142, 88))
+        if lit:
+            d.rectangle([bx + bw * 0.38, by - bh * 0.55, bx + bw * 0.62, by],
+                        fill=(248, 186, 96))
+
+
+ART = {1: art_strike, 2: art_trade, 3: art_capture, 6: art_cop, 8: art_quake,
+       7: art_mercury, 10: art_port, 12: art_cricket, 26: art_village}
 
 
 def draw_art(img, n, box):
@@ -465,30 +546,33 @@ CAPTION = {
     8: ("M6.7 QUAKE", "PERU"),
     10: ("DRONES HIT", "UST-LUGA"),
     12: ("INDIA", "486 FOR 4"),
+    26: ("NIGERIA", "6 KILLED"),
 }
 
-# The day on a clock: one dot per story, at the hour the edition first had it
-# on 21 November 2026 (links[].publishedAt, UTC, inside the day itself). Only
-# stories whose first report falls inside 00:00-23:59Z are drawn, so the clock
-# never claims a time the edition does not hold. content_audit checks each.
-CLOCK = [
-    (13, "00:08", "UN robot talks", "europe"),
-    (8, "05:30", "Peru quake M6.7", "americas"),
-    (18, "08:03", "NATO on Poland", "europe"),
-    (23, "10:18", "Manipur deaths", "asia"),
-    (2, "12:04", "EU\u2013Indonesia pact", "asia"),
-    (1, "13:44", "Iran hits Bahrain", "middle-east"),
-    (6, "17:12", "COP31 overtime", "world"),
-    (30, "18:05", "FBI hack", "americas"),
-]
+# the hour the edition first had each panel's story, taken from its own
+# links[].publishedAt and from nothing else. content_audit re-derives every
+# one of these from ed21.json and fails the build on a single wrong minute or
+# on any story whose first report falls outside 21 November in UTC.
+# 9 and 10 carry no timestamp; 12's first report is 2026-11-20T23:04:57Z, the
+# previous day in UTC, so all three carry no hour rather than an invented one.
+CLOCK = {
+    1: "13:44",
+    2: "12:04",
+    3: "14:36",
+    6: "17:12",
+    8: "05:30",
+    26: "13:01",
+}
 
 # the edition's own tiers, so the page says which stories it judged the day's
-# leads rather than presenting all six panels as equally important
-LEADS = [1, 2]
+# leads rather than presenting every panel as equally important. These are all
+# three of the edition's tier-"lead" stories: 1, 2 and 3.
+LEADS = [1, 2, 3]
 
-PANELS = [1, 2, 6, 8, 10, 12]
+PANELS = [1, 2, 3, 6, 8, 10, 12, 26]
 # every remaining story of the edition, so the page covers the whole day
-FOOT = [3, 4, 5, 7, 9, 11, 13] + list(range(14, 36))
+FOOT = [4, 5, 7, 9, 11, 13] + list(range(14, 36))
+FOOT = [n for n in FOOT if n not in PANELS]
 
 
 def main(out_path):
@@ -548,52 +632,14 @@ def main(out_path):
             d.line([cx0 - 2, nb_top + 6, cx0 - 2, nb_top + nb_h - 4], fill=(214, 206, 190), width=1)
     d.line([M, 246, RIGHT, 246], fill=RULE, width=2)
 
-    # the day on a clock: the edition's own first-report times, so a reader can
-    # see the day move from midnight in Europe to evening in Washington. Each
-    # dot is one story; the four that name a headline are the ones a reader can
-    # otherwise only see unplaced at the foot of the page.
-    cl_top = 252
-    cl_h = 62
-    f_hour = font("arialbd.ttf", 10)
-    f_ev = font("arial.ttf", 9.5)
-    f_st = font("arialbd.ttf", 9.5)
-    axis = cl_top + 30
-    d.line([M + 30, axis, RIGHT - 30, axis], fill=(196, 188, 172), width=2)
-    for h in (0, 6, 12, 18, 24):
-        hx = M + 30 + (RIGHT - 30 - M - 30) * h / 24.0
-        d.line([hx, axis - 3, hx, axis + 3], fill=(120, 112, 100), width=1)
-        lbl = "%02d UTC" % h
-        d.text((hx - tw(d, lbl, f_hour) / 2, cl_top + 46), lbl, font=f_hour, fill=FAINT)
-    caps(d, (M, cl_top), "THE DAY IN UTC \u00b7 WHEN EACH STORY FIRST BROKE", f_hour, SOFT)
-    # alternate the labels above and below the axis by position in time, so two
-    # neighbouring stories never land on the same row
-    for i, (n, hhmm, label, reg) in enumerate(CLOCK):
-        hh, mm = hhmm.split(":")
-        t = (int(hh) * 60 + int(mm)) / 1440.0
-        px = M + 30 + (RIGHT - 30 - M - 30) * t
-        col = REGION[reg][0]
-        d.ellipse([px - 3, axis - 3, px + 3, axis + 3], fill=col, outline=PAPER)
-        stamp = "%s " % hhmm
-        wlab = tw(d, stamp, f_st) + tw(d, label, f_ev)
-        x = max(M, min(px - wlab / 2, RIGHT - wlab))
-        if i % 2 == 0:
-            ty = cl_top + 12
-            d.line([px, axis - 4, px, ty + 12], fill=col, width=1)
-        else:
-            ty = cl_top + 33
-            d.line([px, axis + 4, px, ty], fill=col, width=1)
-        d.text((x, ty), stamp, font=f_st, fill=col)
-        d.text((x + tw(d, stamp, f_st), ty), label, font=f_ev, fill=INK)
-    d.line([M, cl_top + cl_h + 4, RIGHT, cl_top + cl_h + 4], fill=RULE, width=2)
-
     # measure, then draw: the two rows must share a height or the grid tears
-    gap = 16
-    pw = (EDGE - 2 * gap) // 3
-    art_h = 152
+    gap = 14
+    pw = (EDGE - 3 * gap) // 4
+    art_h = 132
     band_h = BAND_H
-    f_head = font("georgiab.ttf", 19)
-    f_deck = font("arial.ttf", 11.5)
-    f_kick = font("arialbd.ttf", 10)
+    f_head = font("georgiab.ttf", 15)
+    f_deck = font("arial.ttf", 10.5)
+    f_kick = font("arialbd.ttf", 9.5)
     f_src = font("arialbd.ttf", 8.5)
 
     def measure(a_h):
@@ -601,27 +647,31 @@ def main(out_path):
         for n in PANELS:
             st = by_n(n)
             h = a_h + band_h + 8 + 15
-            h += int(19 * 1.12) * len(wrap(d, st[2], f_head, pw))
+            h += int(15 * 1.14) * len(wrap(d, st[2], f_head, pw))
             if st[3]:
-                h += 3 + 13 * len(wrap(d, st[3], f_deck, pw)[:2])
+                h += 3 + 12 * len(wrap(d, st[3], f_deck, pw)[:1])
             h += 3 + 11
             hs.append(h)
-        return [max(hs[0:3]), max(hs[3:6])]
+        return [max(hs[0:4]), max(hs[4:8])]
 
-    top = cl_top + cl_h + 12
+    top = 258
     # the briefs rail sizes itself first; the pictures then take what is left
     f_b = font("arialbd.ttf", 10.5)
     f_r = font("arial.ttf", 10.5)
-    cols = 3
-    colw = (EDGE - 2 * 16) // cols
-    rows = (len(FOOT) + cols - 1) // cols
+    cols = 4
+    colw = (EDGE - 3 * 14) // 4
+    # the briefs stay in three wider columns even though the panels went to
+    # four: a 4-up footer column cannot hold a headline without clipping it
+    f_cols = 3
+    f_colw = (EDGE - 2 * 16) // f_cols
+    rows = (len(FOOT) + f_cols - 1) // f_cols
     lead = 13.0
     close_rule = H - M - 26
     foot_h = (rows - 1) * lead + 12
     y_foot = close_rule - 12 - foot_h
     rule = y_foot - 14
     # shrink the pictures until both rows clear the footer band
-    while art_h > 80:
+    while art_h > 70:
         row_h = measure(art_h)
         if top + row_h[0] + gap + row_h[1] <= rule - 10:
             break
@@ -630,8 +680,8 @@ def main(out_path):
     for i, n in enumerate(PANELS):
         st = by_n(n)
         col = colour(st)
-        cx = M + (i % 3) * (pw + gap)
-        cy = top if i < 3 else top + row_h[0] + gap
+        cx = M + (i % 4) * (pw + gap)
+        cy = top if i < 4 else top + row_h[0] + gap
 
         # the picture, whole: nothing drawn over it
         d.rectangle([cx, cy, cx + pw, cy + art_h], outline=RULE, width=1)
@@ -640,31 +690,46 @@ def main(out_path):
         # the label as a solid band under the picture, readable at any size
         d.rectangle([cx, cy + art_h, cx + pw, cy + art_h + band_h], fill=col)
         big, small = CAPTION[n]
-        f1, s1 = fit_caps(d, big, "arialbd.ttf", 21, pw - 22, 11)
-        f2, s2 = fit_caps(d, small, "arialbd.ttf", 21, pw - 22, 11)
+        f1, s1 = fit_caps(d, big, "arialbd.ttf", 21, pw - 16, 9)
+        f2, s2 = fit_caps(d, small, "arialbd.ttf", 21, pw - 16, 9)
         ty = cy + art_h + 5
-        d.text((cx + 11, ty), big, font=f1, fill=WHITE)
-        d.text((cx + 11, ty + s1 + 6), small, font=f2, fill=(255, 246, 238))
+        d.text((cx + 8, ty), big, font=f1, fill=WHITE)
+        d.text((cx + 8, ty + s1 + 5), small, font=f2, fill=(255, 246, 238))
 
-        ty = cy + art_h + band_h + 10
+        ty = cy + art_h + band_h + 8
         if n in LEADS:
             # a solid chip, not an outline: at this size a hairline box breaks
             # up in any downscale, and the chip has to survive 300px
-            f_l = font("arialbd.ttf", 9)
-            label = "LEAD STORY"
+            f_l = font("arialbd.ttf", 8.5)
+            label = "LEAD"
             lw = caps_width(d, label, f_l, 0.6)
-            d.rectangle([cx, ty - 1, cx + lw + 10, ty + f_l.size + 3], fill=col)
-            caps(d, (cx + 5, ty + 1), label, f_l, WHITE, track=0.6)
-            caps(d, (cx + lw + 16, ty + 1), region_label(st), f_kick, col)
+            d.rectangle([cx, ty - 1, cx + lw + 8, ty + f_l.size + 2], fill=col)
+            caps(d, (cx + 4, ty), label, f_l, WHITE, track=0.6)
+            caps(d, (cx + lw + 13, ty), region_label(st), f_kick, col)
         else:
             caps(d, (cx, ty), region_label(st), f_kick, col)
-        ty += 15
+        # the hour the edition first had this story, in the same rail as the
+        # region: the clock the band used to carry, now next to what it times
+        if n in CLOCK:
+            stamp = "%s UTC" % CLOCK[n]
+            f_c = font("arialbd.ttf", 8.5)
+            caps(d, (cx + pw - caps_width(d, stamp, f_c, 0.4), ty), stamp, f_c, FAINT, track=0.4)
+        ty += 14
         for ln in wrap(d, st[2], f_head, pw):
             d.text((cx, ty), ln, font=f_head, fill=INK)
-            ty += int(19 * 1.12)
-        if st[3]:
-            ty = para(d, (cx, ty + 3), st[3], f_deck, SOFT, pw, 13, 2)
-        caps(d, (cx, ty + 3), st[4].upper(), f_src, FAINT)
+            ty += int(15 * 1.14)
+        # the deck is capped at two lines, and an overlong one is clipped at a
+        # word boundary with an ellipsis. A panel with no summary still spends
+        # the same vertical space, so every credit line in a row shares a
+        # baseline instead of one panel's source drifting up under its headline.
+        whole = wrap(d, st[3], f_deck, pw) if st[3] else []
+        deck_lines = whole[:2]
+        if len(whole) > 2:
+            deck_lines[1] = clip_to(d, deck_lines[1] + " " + whole[2], f_deck, pw)
+        for k, ln in enumerate(deck_lines):
+            d.text((cx, ty + 2 + k * 12), ln, font=f_deck, fill=SOFT)
+        ty += 2 + 12 * 2
+        caps(d, (cx, ty), st[4].upper(), f_src, FAINT)
 
     # the rest of the day, anchored to the foot so the page closes cleanly
     d.line([M, y_foot - 14, RIGHT, y_foot - 14], fill=RULE, width=2)
@@ -674,24 +739,22 @@ def main(out_path):
 
     for i, n in enumerate(FOOT):
         st = by_n(n)
-        cx = M + (i // rows) * (colw + 16)
+        cx = M + (i // rows) * (f_colw + 16)
         yy = y_foot + 26 + (i % rows) * lead
         d.rectangle([cx, yy + 3, cx + 3, yy + 9], fill=colour(st))
         head = st[2]
         x = cx + 10
+        # clip at a word boundary with an ellipsis: a headline cut mid-word
+        # ("...in a tria") reads as a broken render, not as an abbreviation
         if ": " in head:
             actor, rest = head.split(": ", 1)
             d.text((x, yy), actor + ":", font=f_b, fill=INK)
             x += tw(d, actor + ":", f_b) + tw(d, " ", f_r)
-            # clip the remainder to the column so it never runs into the next one
-            while rest and x + tw(d, rest, f_r) > cx + colw - 2:
-                rest = rest[:-1].rstrip()
+            rest = clip_to(d, rest, f_r, cx + f_colw - 2 - x)
             if rest:
                 d.text((x, yy), rest, font=f_r, fill=INK)
         else:
-            while head and x + tw(d, head, f_r) > cx + colw - 2:
-                head = head[:-1].rstrip()
-            d.text((x, yy), head, font=f_r, fill=INK)
+            d.text((x, yy), clip_to(d, head, f_r, cx + f_colw - 2 - x), font=f_r, fill=INK)
 
     # closing line: what the page promises about itself
     d.line([M, H - M - 26, RIGHT, H - M - 26], fill=RULE, width=1)
